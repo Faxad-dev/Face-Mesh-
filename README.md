@@ -6,7 +6,7 @@ Everything runs locally in your browser. No video is uploaded or stored anywhere
 
 **Live demo:** file:///C:/Users/faada/Desktop/face_mesh.html
 
-![Face Mesh Pro screenshot](file:///C:/Users/faada/Desktop/Screenshot_1.png)
+![Face Mesh Pro screenshot](Screenshot_1.png)
 
 ## Features
 
