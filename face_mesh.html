@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Face Mesh Pro — Fahad 325 | NFC-IET</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #050810;
+    --panel:     #0b0f1c;
+    --border:    #1a2240;
+    --cyan:      #00e5ff;
+    --green:     #00ff9d;
+    --yellow:    #ffd600;
+    --red:       #ff3d71;
+    --purple:    #b44dff;
+    --text:      #c8d8f0;
+    --dim:       #4a5a7a;
+    --mono:      'Share Tech Mono', monospace;
+    --display:   'Exo 2', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--green); }
+  .badge {
+    font-size: 0.65rem;
+    color: var(--dim);
+    text-align: right;
+    line-height: 1.5;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    display: inline-block;
+    margin-right: 6px;
+    transition: background 0.3s;
+  }
+  .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  /* ── Main layout ── */
+  main {
+    display: flex;
+    flex: 1;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Canvas area ── */
+  .canvas-wrap {
+    flex: 1;
+    position: relative;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  video  { display: none; }
+  canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* Scan-line overlay */
+  .scanlines {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 2px,
+      rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-color: var(--cyan);
+    border-style: solid;
+    opacity: 0.6;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .corner.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  /* No-face overlay */
+  #noface {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #noface.visible { opacity: 1; }
+  #noface .nf-ring {
+    width: 80px; height: 80px;
+    border: 2px dashed var(--dim);
+    border-radius: 50%;
+    margin-bottom: 14px;
+    animation: spin 4s linear infinite;
+  }
+  #noface p { color: var(--dim); font-size: 0.8rem; letter-spacing: 2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Screenshot flash */
+  #flash {
+    position: absolute; inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.05s;
+  }
+
+  /* ── Right sidebar ── */
+  .sidebar {
+    width: 240px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .s-section {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+  .s-label {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* Stat rows */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 7px;
+    font-size: 0.72rem;
+  }
+  .stat-row .key { color: var(--dim); }
+  .stat-row .val { color: var(--cyan); font-weight: bold; }
+  .stat-row .val.green  { color: var(--green); }
+  .stat-row .val.yellow { color: var(--yellow); }
+  .stat-row .val.red    { color: var(--red); }
+  .stat-row .val.purple { color: var(--purple); }
+
+  /* Gauge */
+  .gauge-wrap { margin-bottom: 10px; }
+  .gauge-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: var(--dim);
+    margin-bottom: 3px;
+  }
+  .gauge-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.1s, background 0.2s;
+  }
+
+  /* Buttons */
+  .btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    padding: 7px 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    cursor: pointer;
+    border-radius: 3px;
+    letter-spacing: 1px;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    text-align: center;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn.active { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
+  .btn.danger { border-color: var(--red); color: var(--red); }
+  .btn.danger:hover { background: var(--red); color: var(--bg); }
+  .btn-full {
+    width: 100%;
+    padding: 9px;
+    border: 1px solid var(--green);
+    background: transparent;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    cursor: pointer;
+    border-radius: 3px;
+    letter-spacing: 2px;
+    transition: all 0.2s;
+    margin-top: 6px;
+  }
+  .btn-full:hover { background: var(--green); color: var(--bg); }
+  .btn-full.stop { border-color: var(--red); color: var(--red); }
+  .btn-full.stop:hover { background: var(--red); color: var(--bg); }
+
+  /* Mode selector */
+  .mode-btns { display: flex; flex-direction: column; gap: 5px; }
+  .mode-btn {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    cursor: pointer;
+    border-radius: 3px;
+    text-align: left;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .mode-btn:hover { border-color: var(--purple); color: var(--purple); }
+  .mode-btn.active { border-color: var(--purple); color: var(--purple); background: rgba(180,77,255,0.1); }
+
+  /* Emotion badge */
+  #emotion-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    border-radius: 2px;
+    width: 100%;
+    text-align: center;
+    margin-top: 4px;
+  }
+
+  /* Blink counter big display */
+  .blink-big {
+    font-family: var(--display);
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: var(--cyan);
+    text-align: center;
+    line-height: 1;
+    padding: 6px 0;
+    text-shadow: 0 0 20px rgba(0,229,255,0.4);
+  }
+  .blink-sub { font-size: 0.58rem; color: var(--dim); text-align: center; letter-spacing: 3px; margin-top: 2px; }
+
+  /* ── Bottom bar ── */
+  footer {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 6px 16px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 0.6rem;
+    color: var(--dim);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  footer .key-hint { color: var(--text); }
+  footer .key-hint kbd {
+    background: var(--border);
+    color: var(--cyan);
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 0.58rem;
+  }
+
+  /* Alert overlay */
+  #alert-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .alert-pill {
+    padding: 6px 18px;
+    border-radius: 20px;
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .alert-pill.blink-alert { background: rgba(255,61,113,0.85); color: white; }
+  .alert-pill.mouth-alert { background: rgba(0,229,255,0.85); color: var(--bg); }
+  .alert-pill.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Face <span>Mesh</span> Pro</div>
+    <div style="font-size:0.58rem; color:var(--dim); margin-top:2px;">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">CAMERA OFF</span>
+    </div>
+  </div>
+  <div class="badge">
+    Fahad Akhtar — ID: 325 | Section B<br>
+    NFC-IET Multan &nbsp;·&nbsp; MediaPipe JS
+  </div>
+</header>
+
+<main>
+  <div class="canvas-wrap" id="canvasWrap">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <div id="noface" class="visible">
+      <div class="nf-ring"></div>
+      <p>NO FACE DETECTED</p>
+    </div>
+
+    <div id="alert-overlay">
+      <div class="alert-pill blink-alert" id="blinkAlert">BLINK!</div>
+      <div class="alert-pill mouth-alert" id="mouthAlert">MOUTH OPEN</div>
+    </div>
+
+    <div id="flash"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Camera control -->
+    <div class="s-section">
+      <div class="s-label">Camera</div>
+      <button class="btn-full" id="startBtn" onclick="toggleCamera()">▶ START CAMERA</button>
+    </div>
+
+    <!-- Live stats -->
+    <div class="s-section">
+      <div class="s-label">Live Stats</div>
+      <div class="stat-row"><span class="key">FPS</span><span class="val green" id="fps">--</span></div>
+      <div class="stat-row"><span class="key">Faces</span><span class="val" id="faces">0</span></div>
+      <div class="stat-row"><span class="key">Distance</span><span class="val yellow" id="dist">-- cm</span></div>
+      <div class="stat-row"><span class="key">Gaze</span><span class="val purple" id="gaze">--</span></div>
+    </div>
+
+    <!-- Blink counter -->
+    <div class="s-section">
+      <div class="s-label">Blink Counter</div>
+      <div class="blink-big" id="blinkCount">0</div>
+      <div class="blink-sub">TOTAL BLINKS</div>
+      <button class="btn danger" style="width:100%;margin-top:8px;" onclick="resetBlinks()">RESET</button>
+    </div>
+
+    <!-- EAR / MAR gauges -->
+    <div class="s-section">
+      <div class="s-label">Eye & Mouth</div>
+      <div class="gauge-wrap">
+        <div class="gauge-label"><span>EAR (Eye)</span><span id="earVal">0.00</span></div>
+        <div class="gauge-track"><div class="gauge-fill" id="earGauge" style="background:var(--green)"></div></div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-label"><span>MAR (Mouth)</span><span id="marVal">0.00</span></div>
+        <div class="gauge-track"><div class="gauge-fill" id="marGauge" style="background:var(--yellow)"></div></div>
+      </div>
+    </div>
+
+    <!-- Head Pose -->
+    <div class="s-section">
+      <div class="s-label">Head Pose</div>
+      <div class="stat-row"><span class="key">Pitch</span><span class="val" id="pitch">--°</span></div>
+      <div class="stat-row"><span class="key">Yaw</span><span class="val" id="yaw">--°</span></div>
+      <div class="stat-row"><span class="key">Roll</span><span class="val" id="roll">--°</span></div>
+    </div>
+
+    <!-- Emotion -->
+    <div class="s-section">
+      <div class="s-label">Expression</div>
+      <div id="emotion-badge">WAITING...</div>
+    </div>
+
+    <!-- Display mode -->
+    <div class="s-section">
+      <div class="s-label">Display Mode</div>
+      <div class="mode-btns">
+        <button class="mode-btn active" onclick="setMode('FULL',this)">FULL</button>
+        <button class="mode-btn" onclick="setMode('MESH',this)">MESH ONLY</button>
+        <button class="mode-btn" onclick="setMode('CONTOURS',this)">CONTOURS</button>
+        <button class="mode-btn" onclick="setMode('MINIMAL',this)">MINIMAL</button>
+        <button class="mode-btn" onclick="setMode('IRIS',this)">IRIS ONLY</button>
+      </div>
+    </div>
+
+    <!-- Toggles -->
+    <div class="s-section">
+      <div class="s-label">Toggles</div>
+      <div class="btn-grid">
+        <button class="btn active" id="tMesh" onclick="toggle('mesh')">MESH</button>
+        <button class="btn active" id="tIris" onclick="toggle('iris')">IRIS</button>
+        <button class="btn active" id="tBbox" onclick="toggle('bbox')">BBOX</button>
+        <button class="btn active" id="tHud"  onclick="toggle('hud')">HUD</button>
+      </div>
+    </div>
+
+    <!-- Screenshot -->
+    <div class="s-section">
+      <div class="s-label">Capture</div>
+      <button class="btn-full" onclick="takeScreenshot()">📸 SCREENSHOT</button>
+    </div>
+
+  </div><!-- /sidebar -->
+</main>
+
+<footer>
+  <span class="key-hint"><kbd>S</kbd> Screenshot</span>
+  <span class="key-hint"><kbd>M</kbd> Cycle Mode</span>
+  <span class="key-hint"><kbd>B</kbd> BBox</span>
+  <span class="key-hint"><kbd>I</kbd> Iris</span>
+  <span class="key-hint"><kbd>H</kbd> HUD</span>
+  <span class="key-hint"><kbd>R</kbd> Reset</span>
+  <span style="margin-left:auto;">NFC-IET Multan · Fahad 325</span>
+</footer>
+
+<!-- MediaPipe CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+<script>
+// ── State ──
+let mode        = 'FULL';
+let toggles     = { mesh: true, iris: true, bbox: true, hud: true };
+let blinkCount  = 0;
+let blinkState  = false;
+let cameraOn    = false;
+let lastTime    = performance.now();
+let fpsSmooth   = 0;
+let faceMesh    = null;
+let camera      = null;
+let lastResults = null;
+
+const EAR_THRESH = 0.21;
+const MAR_THRESH = 0.35;
+
+// ── DOM refs ──
+const video    = document.getElementById('video');
+const canvas   = document.getElementById('canvas');
+const ctx      = canvas.getContext('2d');
+const noface   = document.getElementById('noface');
+const flash    = document.getElementById('flash');
+
+// ── Landmark indices ──
+const LEFT_EAR  = [362, 385, 387, 263, 373, 380];
+const RIGHT_EAR = [33,  160, 158, 133, 153, 144];
+const LEFT_IRIS  = [474, 475, 476, 477];
+const RIGHT_IRIS = [469, 470, 471, 472];
+const LEFT_EYE_OUTLINE  = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398];
+const RIGHT_EYE_OUTLINE = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
+
+// ── Math helpers ──
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function ear(lm, idx, W, H) {
+  const p = idx.map(i => ({ x: lm[i].x * W, y: lm[i].y * H }));
+  const A = dist(p[1], p[5]);
+  const B = dist(p[2], p[4]);
+  const C = dist(p[0], p[3]);
+  return (A + B) / (2 * C + 1e-6);
+}
+
+function mar(lm, W, H) {
+  const top    = { x: lm[13].x * W,  y: lm[13].y * H };
+  const bottom = { x: lm[14].x * W,  y: lm[14].y * H };
+  const left   = { x: lm[78].x * W,  y: lm[78].y * H };
+  const right  = { x: lm[308].x * W, y: lm[308].y * H };
+  return dist(top, bottom) / (dist(left, right) + 1e-6);
+}
+
+function headPose(lm, W, H) {
+  const nose  = { x: lm[1].x * W,   y: lm[1].y * H };
+  const chin  = { x: lm[152].x * W, y: lm[152].y * H };
+  const lEye  = { x: lm[33].x * W,  y: lm[33].y * H };
+  const rEye  = { x: lm[263].x * W, y: lm[263].y * H };
+  const eyeMid = { x: (lEye.x + rEye.x) / 2, y: (lEye.y + rEye.y) / 2 };
+  const eyeDist = dist(lEye, rEye) + 1e-6;
+  const faceH   = dist(eyeMid, chin) + 1e-6;
+  const yaw   = (Math.atan2(nose.x - eyeMid.x, eyeDist) * 180 / Math.PI) * 2;
+  const pitch = (Math.atan2(nose.y - eyeMid.y, faceH) * 180 / Math.PI) * 2 - 30;
+  const roll  = Math.atan2(rEye.y - lEye.y, rEye.x - lEye.x) * 180 / Math.PI;
+  return { pitch, yaw, roll };
+}
+
+function faceDistance(lm, W) {
+  const lEye = { x: lm[33].x * W };
+  const rEye = { x: lm[263].x * W };
+  const px = Math.abs(rEye.x - lEye.x);
+  return px < 1 ? 0 : (6.4 * 600) / px;
+}
+
+function irisCenter(lm, idx, W, H) {
+  let x = 0, y = 0;
+  idx.forEach(i => { x += lm[i].x; y += lm[i].y; });
+  return { x: x / idx.length * W, y: y / idx.length * H };
+}
+
+function gazeDir(irisCx, eyeOutline, lm, W) {
+  const xs = eyeOutline.map(i => lm[i].x * W);
+  const mn = Math.min(...xs), mx = Math.max(...xs);
+  const r = (irisCx - mn) / (mx - mn + 1e-6);
+  return r < 0.40 ? 'LEFT' : r > 0.60 ? 'RIGHT' : 'CENTER';
+}
+
+function emotionHint(earAvg, marVal, pitch, yaw) {
+  if (marVal > MAR_THRESH)  return 'SURPRISED / TALKING';
+  if (earAvg < EAR_THRESH)  return 'EYES CLOSED';
+  if (pitch < -20)           return 'LOOKING DOWN';
+  if (pitch > 15)            return 'LOOKING UP';
+  if (Math.abs(yaw) > 25)   return 'LOOKING SIDEWAYS';
+  return 'NEUTRAL';
+}
+
+// ── Drawing helpers ──
+function drawLandmarkDots(lm, W, H, color = '#00e5ff', r = 1) {
+  ctx.fillStyle = color;
+  lm.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x * W, p.y * H, r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawConnections(lm, connections, W, H, color, lineW = 0.5) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lineW;
+  connections.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(lm[a].x * W, lm[a].y * H);
+    ctx.lineTo(lm[b].x * W, lm[b].y * H);
+    ctx.stroke();
+  });
+}
+
+function hudText(lines, x, y, color = '#00e5ff') {
+  ctx.save();
+  const fs = 13;
+  ctx.font = `${fs}px 'Share Tech Mono', monospace`;
+  const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const pad  = 8;
+  const bh   = lines.length * (fs + 4) + pad * 2;
+  ctx.fillStyle = 'rgba(5,8,16,0.75)';
+  ctx.fillRect(x - pad, y - fs - pad + 2, maxW + pad * 2, bh);
+  ctx.fillStyle = color;
+  lines.forEach((l, i) => {
+    ctx.fillText(l, x, y + i * (fs + 4));
+  });
+  ctx.restore();
+}
+
+function drawGaugeCTX(label, val, x, y, w, h, color, max = 1) {
+  const ratio = Math.min(1, Math.max(0, val / max));
+  ctx.fillStyle = '#1a2240';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w * ratio, h);
+  ctx.strokeStyle = '#2a3a60';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = '#c8d8f0';
+  ctx.font = '10px Share Tech Mono';
+  ctx.fillText(`${label}: ${val.toFixed(2)}`, x + w + 6, y + h);
+}
+
+// ── Face Mesh connection arrays (MediaPipe) ──
+// We'll use FACEMESH_TESSELATION, FACEMESH_FACE_OVAL, FACEMESH_LIPS, FACEMESH_LEFT_EYE, FACEMESH_RIGHT_EYE
+// These are available after the script loads
+
+// ── Camera toggle ──
+async function toggleCamera() {
+  if (cameraOn) {
+    stopCamera();
+  } else {
+    await startCamera();
+  }
+}
+
+async function startCamera() {
+  document.getElementById('startBtn').textContent = '⏳ LOADING...';
+
+  faceMesh = new FaceMesh({ locateFile: f =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+  });
+
+  faceMesh.setOptions({
+    maxNumFaces: 2,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+
+  faceMesh.onResults(onResults);
+
+  camera = new Camera(video, {
+    onFrame: async () => { await faceMesh.send({ image: video }); },
+    width: 1280,
+    height: 720,
+  });
+
+  await camera.start();
+  cameraOn = true;
+  document.getElementById('startBtn').textContent = '⏹ STOP CAMERA';
+  document.getElementById('startBtn').classList.add('stop');
+  document.getElementById('statusDot').classList.add('active');
+  document.getElementById('statusText').textContent = 'LIVE';
+}
+
+function stopCamera() {
+  if (camera) camera.stop();
+  if (faceMesh) faceMesh.close();
+  cameraOn = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('startBtn').textContent = '▶ START CAMERA';
+  document.getElementById('startBtn').classList.remove('stop');
+  document.getElementById('statusDot').classList.remove('active');
+  document.getElementById('statusText').textContent = 'CAMERA OFF';
+  noface.classList.add('visible');
+  resetStats();
+}
+
+function resetStats() {
+  ['fps','faces','dist','gaze','pitch','yaw','roll'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '--';
+  });
+  document.getElementById('emotion-badge').textContent = 'WAITING...';
+  document.getElementById('earGauge').style.width = '0%';
+  document.getElementById('marGauge').style.width = '0%';
+  document.getElementById('earVal').textContent = '0.00';
+  document.getElementById('marVal').textContent = '0.00';
+}
+
+// ── Main results callback ──
+function onResults(results) {
+  const W = canvas.width  = video.videoWidth  || 1280;
+  const H = canvas.height = video.videoHeight || 720;
+
+  // FPS
+  const now = performance.now();
+  const fps = 1000 / (now - lastTime + 0.001);
+  lastTime = now;
+  fpsSmooth = fpsSmooth * 0.9 + fps * 0.1;
+
+  // Draw video frame
+  ctx.save();
+  ctx.drawImage(results.image, 0, 0, W, H);
+  ctx.restore();
+
+  const hasFace = results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0;
+  noface.classList.toggle('visible', !hasFace);
+
+  if (!hasFace) {
+    updateSidebarBasic(fpsSmooth, 0);
+    return;
+  }
+
+  let firstEar = 0.3, firstMar = 0, firstPitch = 0, firstYaw = 0, firstRoll = 0, firstDist = 0, firstGaze = 'CENTER';
+
+  results.multiFaceLandmarks.forEach((lm, fi) => {
+    // ── BBOX ──
+    if (toggles.bbox) {
+      const xs = lm.map(p => p.x * W);
+      const ys = lm.map(p => p.y * H);
+      const x1 = Math.max(0, Math.min(...xs) - 10);
+      const y1 = Math.max(0, Math.min(...ys) - 10);
+      const x2 = Math.min(W, Math.max(...xs) + 10);
+      const y2 = Math.min(H, Math.max(...ys) + 10);
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.font = '11px Share Tech Mono';
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillText(`Face #${fi + 1}`, x1 + 4, y1 - 5);
+    }
+
+    // ── Mesh / Contours ──
+    if (toggles.mesh) {
+      if (mode === 'FULL' || mode === 'MESH') {
+        drawConnections(lm, FACEMESH_TESSELATION, W, H, 'rgba(0,229,255,0.12)', 0.4);
+      }
+      if (mode === 'FULL' || mode === 'CONTOURS') {
+        drawConnections(lm, FACEMESH_FACE_OVAL,   W, H, 'rgba(0,255,157,0.7)',  1.2);
+        drawConnections(lm, FACEMESH_LIPS,        W, H, 'rgba(255,100,100,0.7)',1.0);
+        drawConnections(lm, FACEMESH_LEFT_EYE,    W, H, 'rgba(180,77,255,0.8)', 1.0);
+        drawConnections(lm, FACEMESH_RIGHT_EYE,   W, H, 'rgba(180,77,255,0.8)', 1.0);
+        drawConnections(lm, FACEMESH_LEFT_EYEBROW, W, H, 'rgba(255,214,0,0.7)', 1.0);
+        drawConnections(lm, FACEMESH_RIGHT_EYEBROW,W, H, 'rgba(255,214,0,0.7)', 1.0);
+      }
+      if (mode === 'MINIMAL') {
+        drawLandmarkDots(lm, W, H, '#00ff9d', 1.2);
+      }
+    }
+
+    // ── Iris ──
+    if (toggles.iris && (mode === 'FULL' || mode === 'IRIS' || mode === 'CONTOURS')) {
+      const lIris = irisCenter(lm, LEFT_IRIS,  W, H);
+      const rIris = irisCenter(lm, RIGHT_IRIS, W, H);
+      ctx.beginPath();
+      ctx.arc(lIris.x, lIris.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#00e5ff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(rIris.x, rIris.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Iris ring
+      drawConnections(lm, FACEMESH_LEFT_IRIS,  W, H, 'rgba(0,229,255,0.9)', 1.5);
+      drawConnections(lm, FACEMESH_RIGHT_IRIS, W, H, 'rgba(0,229,255,0.9)', 1.5);
+
+      if (fi === 0) {
+        const gl = gazeDir(lIris.x, LEFT_EYE_OUTLINE,  lm, W);
+        const gr = gazeDir(rIris.x, RIGHT_EYE_OUTLINE, lm, W);
+        firstGaze = gl === gr ? gl : `L:${gl} R:${gr}`;
+      }
+    }
+
+    // ── Metrics (first face) ──
+    if (fi === 0) {
+      const earL = ear(lm, LEFT_EAR,  W, H);
+      const earR = ear(lm, RIGHT_EAR, W, H);
+      firstEar   = (earL + earR) / 2;
+      firstMar   = mar(lm, W, H);
+      const pose = headPose(lm, W, H);
+      firstPitch = pose.pitch;
+      firstYaw   = pose.yaw;
+      firstRoll  = pose.roll;
+      firstDist  = faceDistance(lm, W);
+
+      // Blink detection
+      if (firstEar < EAR_THRESH && !blinkState) {
+        blinkState = true;
+      } else if (firstEar >= EAR_THRESH && blinkState) {
+        blinkState = false;
+        blinkCount++;
+        document.getElementById('blinkCount').textContent = blinkCount;
+      }
+
+      // On-canvas HUD
+      if (toggles.hud) {
+        const emotion = emotionHint(firstEar, firstMar, firstPitch, firstYaw);
+        hudText([
+          `FPS   : ${fpsSmooth.toFixed(1)}`,
+          `Faces : ${results.multiFaceLandmarks.length}`,
+          `Dist  : ${firstDist.toFixed(1)} cm`,
+          `Gaze  : ${firstGaze}`,
+          `Blinks: ${blinkCount}`,
+          `State : ${emotion}`,
+        ], 10, 28, '#00e5ff');
+
+        hudText([
+          'Head Pose',
+          `Pitch: ${firstPitch > 0 ? '+' : ''}${firstPitch.toFixed(1)}°`,
+          `Yaw  : ${firstYaw > 0 ? '+' : ''}${firstYaw.toFixed(1)}°`,
+          `Roll : ${firstRoll > 0 ? '+' : ''}${firstRoll.toFixed(1)}°`,
+        ], W - 175, 28, '#ffd600');
+
+        // Canvas gauges
+        drawGaugeCTX('EAR', firstEar, 10, H - 50, 130, 8, firstEar < EAR_THRESH ? '#ff3d71' : '#00ff9d');
+        drawGaugeCTX('MAR', firstMar, 10, H - 32, 130, 8, '#ffd600', 0.6);
+      }
+
+      // Blink / mouth alerts (canvas)
+      if (firstEar < EAR_THRESH) {
+        ctx.save();
+        ctx.font = 'bold 28px Exo 2, sans-serif';
+        ctx.fillStyle = '#ff3d71';
+        ctx.textAlign = 'center';
+        ctx.fillText('BLINK!', W / 2, 55);
+        ctx.restore();
+      }
+      if (firstMar > MAR_THRESH) {
+        ctx.save();
+        ctx.font = 'bold 22px Exo 2, sans-serif';
+        ctx.fillStyle = '#00e5ff';
+        ctx.textAlign = 'center';
+        ctx.fillText('MOUTH OPEN', W / 2, 88);
+        ctx.restore();
+      }
+    }
+  });
+
+  // ── Update sidebar ──
+  updateSidebar(fpsSmooth, results.multiFaceLandmarks.length,
+    firstEar, firstMar, firstPitch, firstYaw, firstRoll, firstDist, firstGaze);
+}
+
+function updateSidebarBasic(fps, faces) {
+  document.getElementById('fps').textContent   = fps.toFixed(1);
+  document.getElementById('faces').textContent = faces;
+}
+
+function updateSidebar(fps, faces, earV, marV, pitch, yaw, roll, distV, gaze) {
+  document.getElementById('fps').textContent   = fps.toFixed(1);
+  document.getElementById('faces').textContent = faces;
+  document.getElementById('dist').textContent  = distV.toFixed(1) + ' cm';
+  document.getElementById('gaze').textContent  = gaze;
+  document.getElementById('pitch').textContent = (pitch > 0 ? '+' : '') + pitch.toFixed(1) + '°';
+  document.getElementById('yaw').textContent   = (yaw > 0 ? '+' : '')   + yaw.toFixed(1)   + '°';
+  document.getElementById('roll').textContent  = (roll > 0 ? '+' : '')  + roll.toFixed(1)  + '°';
+
+  // EAR gauge
+  const earPct = Math.min(100, earV / 0.45 * 100);
+  document.getElementById('earGauge').style.width      = earPct + '%';
+  document.getElementById('earGauge').style.background = earV < EAR_THRESH ? '#ff3d71' : '#00ff9d';
+  document.getElementById('earVal').textContent        = earV.toFixed(2);
+
+  // MAR gauge
+  const marPct = Math.min(100, marV / 0.6 * 100);
+  document.getElementById('marGauge').style.width = marPct + '%';
+  document.getElementById('marVal').textContent   = marV.toFixed(2);
+
+  // Emotion
+  const em = emotionHint(earV, marV, pitch, yaw);
+  document.getElementById('emotion-badge').textContent = em;
+}
+
+// ── Controls ──
+function setMode(m, btn) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function toggle(key) {
+  toggles[key] = !toggles[key];
+  const ids = { mesh:'tMesh', iris:'tIris', bbox:'tBbox', hud:'tHud' };
+  document.getElementById(ids[key]).classList.toggle('active', toggles[key]);
+}
+
+function resetBlinks() {
+  blinkCount = 0;
+  document.getElementById('blinkCount').textContent = '0';
+}
+
+function takeScreenshot() {
+  // Flash
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 120);
+
+  const link = document.createElement('a');
+  link.download = `facemesh_${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  switch(e.key.toLowerCase()) {
+    case 's': takeScreenshot(); break;
+    case 'r': resetBlinks(); break;
+    case 'b': toggle('bbox');  break;
+    case 'i': toggle('iris');  break;
+    case 'h': toggle('hud');   break;
+    case 't': toggle('mesh');  break;
+    case 'm': {
+      const modes  = ['FULL','MESH','CONTOURS','MINIMAL','IRIS'];
+      const idx    = (modes.indexOf(mode) + 1) % modes.length;
+      mode = modes[idx];
+      document.querySelectorAll('.mode-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+      break;
+    }
+  }
+});
+
+// ── MediaPipe connection constants (defined after scripts load) ──
+// These reference the globals exposed by @mediapipe/face_mesh
+const FACEMESH_TESSELATION    = window.FACEMESH_TESSELATION    || [];
+const FACEMESH_FACE_OVAL      = window.FACEMESH_FACE_OVAL      || [];
+const FACEMESH_LIPS           = window.FACEMESH_LIPS           || [];
+const FACEMESH_LEFT_EYE       = window.FACEMESH_LEFT_EYE       || [];
+const FACEMESH_RIGHT_EYE      = window.FACEMESH_RIGHT_EYE      || [];
+const FACEMESH_LEFT_EYEBROW   = window.FACEMESH_LEFT_EYEBROW   || [];
+const FACEMESH_RIGHT_EYEBROW  = window.FACEMESH_RIGHT_EYEBROW  || [];
+const FACEMESH_LEFT_IRIS      = window.FACEMESH_LEFT_IRIS      || [];
+const FACEMESH_RIGHT_IRIS     = window.FACEMESH_RIGHT_IRIS     || [];
+</script>
+</body>
+</html>
